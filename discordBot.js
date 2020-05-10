@@ -1,13 +1,26 @@
 const Discord = require('discord.js');
+const btoa = require('btoa-lite');
+
 var client = new Discord.Client();
 client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
+	console.log(`Logged in as ${client.user.tag}!`);
 });
-client.guilds.forEach(guildCheck);
+client.guilds.cache.forEach(guildCheck);
 client.on("guildCreate",guildCheck);
 
+client.on("message",(m)=>{
+	if(m.author.id==client.user.id) return;
+	if(!m.mentions.has(client.user)&&m.channel.id!="693492173915815947") return;
+	/*m.channel.send(m.author.toString() + m.content);
+	m.channel.typing = true;
+	bot.ask(m.content, function (err, response) {
+		m.channel.send(m.author.toString() + " " + response);// Will likely be: "Living in a lonely world"
+	});*/
+})
+
+
 function start(token) {
-    client.login(token);
+	client.login(token);
 }
 
 
@@ -15,46 +28,29 @@ function guildCheck(guild) {
     if(guild.id !== global.discord.serverID) guild.leave();
 }
 
-async function getGuild() {
-    return new Promise((resolve,reject)=>{
-        client.guilds.forEach(guild=>{
-            if(guild.id === global.discord.serverID) {
-                resolve(guild);
-            }
-        });
-    })
+function getGuild(guild) {
+	return client.guilds.cache.get(guild||global.discord.serverID);
 }
-async function getChannel(channelID) {
-    var guild = await getGuild();
-    return new Promise((resolve,reject)=>{
-        guild.channels.forEach(channel=>{
-            if(channel.id === channelID) {
-                resolve(channel);
-            }
-        });
-    })
+function getChannel(channelID,g) {
+	var guild = g ||getGuild();
+	return guild.channels.cache.get(channelID);
 }
 
-async function getMember(memberID) {
-    var guild = await getGuild();
-    return new Promise((resolve,reject)=>{
-        guild.members.forEach(member=>{
-            if(member.id === memberID) {
-                resolve(member);
-            }
-        });
-    })
+function getMember(memberID) {
+	var guild = getGuild();
+	return guild.members.cache.get(memberID);
 }
 
 
 
 async function SubmitTP(tp) {
-    var submissionsChannel = await getChannel(global.discord.submissionsChannelID)
-    var author = await getMember(tp.authorid)
+    var submissionsChannel = getChannel(global.discord.submissionsChannelID)
+    var author = getMember(tp.authorid)
+    author.send("Your texture pack " + tp.name + ", has been submitted, a staff member will now review your submission.")
     var embeddata = {
         author:{
             name:`${tp.authorname} (submitted by ${author.displayName})`,
-            icon_url: author.user.avatarURL,
+            icon_url: author.user.avatarURL(),
             url: `https://boxcritters.github.io/authors?a=${tp.authorname}`
         },
         description:tp.description,
@@ -75,8 +71,8 @@ async function SubmitTP(tp) {
         }
     }    
 
-    if(tp.installurl){
-        embeddata.url = tp.installurl;
+    if(tp.install){
+        embeddata.url = tp.install;
     }
 
 
@@ -95,10 +91,10 @@ async function SubmitTP(tp) {
 
     msg.react('✅');
     msg.react('❎');
-
-    var filterAccept = (reaction,user)=>reaction.emoji.name == '✅' && user.id != client.user.id;
-    var collectAccept = msg.createReactionCollector(filterAccept,{maxEmojis:1});
-    collectAccept.on('collect', r => {
+	var filter = (test)=>(reaction,user)=>reaction.emoji.name == test && user.id != client.user.id;
+	
+    msg.createReactionCollector(filter('✅'),{maxEmojis:1})
+    .on('collect', (r,u) => {
         msg.delete();
         if(codemsg) {
             codemsg.delete();
@@ -107,16 +103,13 @@ async function SubmitTP(tp) {
             videomsg.delete();
         }
 
-        var url = "http://localhost:3000/approve/"
-        url += btoa(JSON.stringify(tp));
-
-        r.users.last().send(`Link to Approve the puplishing of **${tp.name}** by ${tp.authorname} (submitted by ${author}): ${url}`);
-    });
-
-    
-    var filterDeny = (reaction,user)=>reaction.emoji.name == '❎' && user.id != client.user.id;
-    var collectDeny = msg.createReactionCollector(filterDeny,{maxEmojis:1});
-    collectDeny.on('collect', r => {
+        var url = "http://" + global.url + "/approve/"
+		url += btoa(JSON.stringify(tp));
+        u.send(`Link to Approve the publishing of **${tp.name}** by ${tp.authorname} (submitted by ${author}): ${url}`);
+	});
+	
+    msg.createReactionCollector(filter('❎'),{maxEmojis:1})
+    .on('collect', (r,u) => {
         msg.delete();
         if(codemsg) {
             codemsg.delete();
@@ -131,7 +124,7 @@ async function SubmitTP(tp) {
 
 
 async function getAvatar(id) {
-    return (await getMember(id)).user.avatarURL;
+    return getMember(id).user.avatarURL;
 }
 
-module.exports = {SubmitTP,start,getAvatar};
+module.exports = {SubmitTP,start,getAvatar,getMember};

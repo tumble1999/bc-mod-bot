@@ -11,6 +11,18 @@ function decode(code) {
     return JSON.parse(atob(code));
 }
 
+async function getTPCode(installUrl) {
+    return new Promise((resolve, reject) => {
+        request(installUrl, { json: true }, (err, res, body) => {
+            if (err) {
+                console.log(err);
+                reject(err);
+            }
+            resolve(body);
+        });
+    });
+}
+
 var app = express();
 app.set('trust proxy', 1) // trust first proxy
 app.use(session({
@@ -33,9 +45,16 @@ app.get('/approve/fail', (req, res) => {
 
 app.get('/auth/github', github.Authenticate())
 
-app.get('/approve', async (req, res, next) => {
+app.get('/approve/:code', async (req, res, next) => {
     if (req.user) {
         res.send('YAY');
+        var info = decode(req.params.code);
+        github.publishTP(req.user.token,info).then(tpURL=>{
+            res.send(tpURL);
+        }).catch(err=>{
+            res.send(err);
+        });      
+        
     } else {
         req.session.returnTo = req.originalUrl
         res.redirect('/auth/github')
@@ -60,30 +79,19 @@ app.post('/submit', async (req, res) => {
     var infoCode = req.body.info;
 
     var info = decode(infoCode);
-    var tpcode;
+    var tp;
     if (!info.code) {
         if (info.install) {
-            var asynctpcode = async ()=>
-            new Promise((resolve, reject) => {
-                request(info.install, { json: true }, (err, res, body) => {
-                    if (err) {
-                        console.log(err);
-                        reject(err);
-                    }
-                    resolve(body);
-                });
-            });
-            tpcode = await asynctpcode();
-            console.log(tpcode);
-            
-            
+            tp = await getTPCode(info.install);
         } else {
             res.send("no tp data");
+            return;
         }
     } else {
-        tpcode = atob(info.code);
+        var tpcode = atob(info.code);
+        tp = JSON.parse(tpcode);
     }
-    var tp = JSON.parse(tpcode);
+    
 
 
 
@@ -95,7 +103,8 @@ app.post('/submit', async (req, res) => {
         code: info.code,
         icon: info.icon,
         banner: info.banner,
-        video: info.video
+        video: info.video,
+        install:info.install
     }
     console.log(info);
 
